@@ -1,6 +1,5 @@
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 % Author:       Daniel Ossig
-%   edited by:  Kevin Kurzenberger (06.08.2018 MATLAB 2018a)
 %
 % Date:         26.07.2018
 %
@@ -14,6 +13,7 @@
 %clear variables        % should be done separately in other file 
 
 addpath('lstm')
+
 
 %% build continuous state space model (linear single track model)
 
@@ -33,43 +33,40 @@ D_psi_dot = lstm1_getContinuousD_psi_dot;
 D_ay = lstm1_getContinuousD_ay(c_alpha_fl,c_alpha_fr,c_alpha_rl,c_alpha_rr,m);
 D=[D_psi_dot;D_ay];
 
-%% build discrete state space model
-td = 0.001;
-sys = ss(A,B,C,D);
-sysd = c2d(sys,td);
-
-Ad=sysd.a;
-Bd=sysd.b;
-Cd=sysd.c;
-Dd=sysd.d;
 
 %% noise definition
 
+noise_process_cnt = 2;
+G = eye(noise_process_cnt);
+
 % real noise of the continuous system
 % covariances
-Q_real=diag([0.005,0.001]);     % Process-Noise Covariance
-R_real=diag([0.05,0.03]);       % Measurement-Noise Covariance
-N_real=zeros(2,2);
+Q_real=diag([5,0.08]);     % Process-Noise Covariance
+R_real=diag([0.01,0.01]);       % Measurement-Noise Covariance
+
+Q_chol = chol(Q_real);
+R_chol = chol(R_real);
+
 % mean
 qm_real = [0.01;0.01]*0; 
 rm_real = [0.1;0.1]*0;
 
-% real noise of the discrete system
-Qd_real=Q_real*td^2;
-Rd_real=R_real;
-Nd_real=N_real;
-% mean
-qmd_real = qm_real*td;
-rmd_real = rm_real;
 
-% kalman filter noise
-% create Noise Factor-Variable if not done by invoking script
-if ~exist('noise_factor','var')
-    noise_factor = 1;       % real noise
-end
-Qd_kf=Qd_real*noise_factor;
-Rd_kf=Rd_real;
-Nd_kf=Nd_real;
+%% build discrete state space model
+td = 0.001;
+sys = ss(A,[B,G],C,[D,zeros(noise_process_cnt)]);
+sysd = c2d(sys,td);
+
+Ad=sysd.a;
+Bd=sysd.b(:,1:3)
+Gd=sysd.b(:,4:3+noise_process_cnt)
+Cd=sysd.c;
+Dd=sysd.d(:,1:3);
+
+
+
+
+
 
 %% set manueover
 
@@ -81,12 +78,6 @@ M_z = 0;
 % build input vector
 u = lstm1_buildU(delta_f,delta_r,M_z);
 
-% create Offset-Variable if not done by invoking script
-if ~exist('Simulated_Sensor_Offset','var')
-    Simulated_Sensor_Offset = [0;...        % yaw rate-Offset
-                                0];         % lateral acceleration-Offset
-end
-
 % set initial state
 psi_dot = 0;
 beta = 0;
@@ -96,6 +87,7 @@ x0 = lstm1_buildX(psi_dot,beta);
 x0_hat = x0;
 P0 = zeros(2,2);
 
+return 
 %% simulate model
 sim('experiment')
 
